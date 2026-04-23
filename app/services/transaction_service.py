@@ -1,11 +1,13 @@
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.classifier import HybridClassifier
 from app.core.confidence import ConfidenceAction, ConfidenceEngine
 from app.core.sms_parser import SMSParser
 from app.models.transaction import Transaction, TransactionType, ReviewStatus
 from app.services.learning_service import LearningService
 from app.utils.patterns import REFUND_KEYWORDS, RECURRING_KEYWORDS, match_keyword
+from config.settings import settings   # ✅ FIXED: added missing import
 
 
 class TransactionService:
@@ -28,6 +30,7 @@ class TransactionService:
         )
 
         parsed = self._parser.parse(sms_text)
+
         if parsed.amount is None:
             return {"error": "Could not parse amount from SMS", "raw_sms": sms_text}
 
@@ -93,12 +96,21 @@ class TransactionService:
         )
         needs_subscription_review = is_subscription and (parsed.amount or 0) > 500
 
-        review_status = (
-            ReviewStatus.REVIEWED
-            if score.action == ConfidenceAction.AUTO_ASSIGN and not is_mixed
-            else ReviewStatus.PENDING
-        )
+        # ── Determine review status based on confidence ─────────────────────────
+        if score.action == ConfidenceAction.AUTO_ASSIGN and not is_mixed:
+            review_status = ReviewStatus.REVIEWED
 
+        elif clf.category == "Uncategorised" or score.adjusted < settings.confidence_suggest:
+            review_status = ReviewStatus.PENDING
+
+            # Prevent bad data from polluting dashboard
+            clf.category = "Uncategorised"
+            clf.sub_category = "Needs Review"
+
+        else:
+            review_status = ReviewStatus.PENDING
+
+        # ── Create transaction ─────────────────────────
         tx = Transaction(
             user_id=self.user_id,
             raw_sms=sms_text,
@@ -152,5 +164,6 @@ class TransactionService:
         await self._learning_service.record_correction(
             self.user_id, transaction_id, category, sub_category
         )
+
         tx = await self.db.get(Transaction, transaction_id)
         return tx.to_output_dict() if tx else {"error": "Not found"}

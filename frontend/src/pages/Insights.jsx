@@ -1,31 +1,41 @@
 import React, { useEffect, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, LineChart, Line, Legend,
+  Tooltip, ResponsiveContainer
 } from "recharts";
-import { getMonthlySummary, getRecurring, getTopMerchants } from "../api";
+import axios from "axios";
+import { getMonthlySummary, getRecurring, getTopMerchants, getUserId } from "../api";
 import CategoryBadge from "../components/CategoryBadge";
 
 export default function Insights() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+
   const [summary, setSummary] = useState(null);
   const [recurring, setRecurring] = useState([]);
   const [topMerchants, setTopMerchants] = useState([]);
+  const [learningStats, setLearningStats] = useState(null);
+
   const [loading, setLoading] = useState(true);
 
   const load = () => {
     setLoading(true);
+
     Promise.all([
       getMonthlySummary(year, month),
       getRecurring(90),
       getTopMerchants(30),
-    ]).then(([s, r, t]) => {
-      setSummary(s.data);
-      setRecurring(r.data.recurring_expenses || []);
-      setTopMerchants(t.data.top_merchants || []);
-    }).catch(() => {}).finally(() => setLoading(false));
+      axios.get(`http://127.0.0.1:8000/api/feedback/learning-stats?user_id=${getUserId()}`)
+    ])
+      .then(([s, r, t, l]) => {
+        setSummary(s.data);
+        setRecurring(r.data.recurring_expenses || []);
+        setTopMerchants(t.data.top_merchants || []);
+        setLearningStats(l.data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [year, month]);
@@ -34,23 +44,24 @@ export default function Insights() {
 
   return (
     <div className="page">
+
       {/* Month Picker */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
           <div>
             <label>Year</label>
-            <select value={year} onChange={e => setYear(Number(e.target.value))}
-                    style={{ width: 100 }}>
+            <select value={year} onChange={e => setYear(Number(e.target.value))}>
               {[2023, 2024, 2025, 2026].map(y => <option key={y}>{y}</option>)}
             </select>
           </div>
+
           <div>
             <label>Month</label>
-            <select value={month} onChange={e => setMonth(Number(e.target.value))}
-                    style={{ width: 130 }}>
+            <select value={month} onChange={e => setMonth(Number(e.target.value))}>
               {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
             </select>
           </div>
+
           <button className="btn btn-primary" onClick={load}>Load</button>
         </div>
       </div>
@@ -59,6 +70,7 @@ export default function Insights() {
         <div className="loading">⏳ Loading insights...</div>
       ) : (
         <>
+
           {/* Summary Cards */}
           <div className="grid-4" style={{ marginBottom: 24 }}>
             {[
@@ -76,129 +88,163 @@ export default function Insights() {
             ))}
           </div>
 
+          {/* Charts + Merchants */}
           <div className="grid-2" style={{ marginBottom: 24 }}>
+
             {/* Category Breakdown */}
             <div className="card">
-              <div className="section-title" style={{ marginBottom: 16 }}>
-                Category Breakdown
-              </div>
+              <div className="section-title">Category Breakdown</div>
+
               {(summary?.category_breakdown?.length || 0) > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={summary.category_breakdown.slice(0, 8)}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e2235" />
-                    <XAxis dataKey="category"
-                           tick={{ fill: "#6b7280", fontSize: 9 }}
-                           angle={-30} textAnchor="end" height={50} />
-                    <YAxis tick={{ fill: "#6b7280", fontSize: 11 }}
-                           tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
-                    <Tooltip
-                      formatter={v => `₹${v.toLocaleString("en-IN")}`}
-                      contentStyle={{ background: "#1a1d27", border: "1px solid #2d3354", borderRadius: 8 }}
-                    />
-                    <Bar dataKey="amount" fill="#7c6af7" radius={[4, 4, 0, 0]} />
+                    <XAxis dataKey="category" angle={-30} textAnchor="end" height={50} />
+                    <YAxis tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
+                    <Tooltip formatter={v => `₹${v.toLocaleString("en-IN")}`} />
+                    <Bar dataKey="amount" fill="#7c6af7" />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="empty-state"><p>No data for this month</p></div>
+                <div>No data</div>
               )}
             </div>
 
             {/* Top Merchants */}
             <div className="card">
-              <div className="section-title" style={{ marginBottom: 16 }}>
-                Top Merchants (Last 30 Days)
-              </div>
-              {topMerchants.length > 0 ? (
-                <div>
-                  {topMerchants.map((m, i) => (
-                    <div key={i} style={{
-                      display: "flex", justifyContent: "space-between",
-                      alignItems: "center", padding: "10px 0",
-                      borderBottom: "1px solid #1e2235",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{
-                          width: 24, height: 24, borderRadius: "50%",
-                          background: "#1e2235", display: "flex",
-                          alignItems: "center", justifyContent: "center",
-                          fontSize: 11, color: "#7c6af7", fontWeight: 700,
-                        }}>{i + 1}</span>
-                        <span style={{ fontSize: 13 }}>{m.merchant}</span>
-                      </div>
-                      <span className="debit-amount">
-                        ₹{(m.total_spend || 0).toLocaleString("en-IN")}
-                      </span>
-                    </div>
-                  ))}
+              <div className="section-title">Top Merchants</div>
+
+              {topMerchants.map((m, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>{i + 1}. {m.merchant}</span>
+                  <span>₹{(m.total_spend || 0).toLocaleString("en-IN")}</span>
                 </div>
-              ) : (
-                <div className="empty-state"><p>No data yet</p></div>
-              )}
+              ))}
             </div>
+
           </div>
 
-          {/* Recurring Expenses */}
+          {/* Recurring */}
           <div className="card">
-            <div className="section-header">
-              <div className="section-title">Recurring Expenses</div>
-              <span style={{ fontSize: 12, color: "#6b7280" }}>
-                {recurring.length} detected
-              </span>
-            </div>
-            {recurring.length > 0 ? (
-              <div className="table-wrap" style={{ border: "none" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Merchant</th>
-                      <th>Category</th>
-                      <th>Frequency</th>
-                      <th>Occurrences</th>
-                      <th>Next Expected</th>
-                      <th>Confidence</th>
-                      <th style={{ textAlign: "right" }}>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recurring.map((r, i) => (
-                      <tr key={i}>
-                        <td style={{ fontWeight: 500 }}>{r.merchant}</td>
-                        <td><CategoryBadge category={r.category} /></td>
-                        <td>
-                          <span className="badge" style={{ background: "#0e2d1a", color: "#4ade80" }}>
-                            {r.frequency}
-                          </span>
-                        </td>
-                        <td style={{ color: "#9ca3af" }}>{r.occurrences}x</td>
-                        <td style={{ color: "#6b7280", fontSize: 12 }}>
-                          {r.next_expected
-                            ? new Date(r.next_expected).toLocaleDateString("en-IN")
-                            : "—"}
-                        </td>
-                        <td>
-                          <span style={{
-                            color: r.confidence >= 0.85 ? "#4ade80" : "#facc15",
-                            fontWeight: 600, fontSize: 12,
-                          }}>
-                            {Math.round(r.confidence * 100)}%
-                          </span>
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <span className="debit-amount">
-                            ₹{(r.amount || 0).toLocaleString("en-IN")}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="section-title">Recurring Expenses</div>
+
+            {recurring.map((r, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>{r.merchant}</span>
+                <CategoryBadge category={r.category} />
+                <span>{r.frequency}</span>
+                <span>₹{(r.amount || 0).toLocaleString("en-IN")}</span>
               </div>
-            ) : (
-              <div className="empty-state">
-                <p>No recurring expenses detected yet. Add more transactions to detect patterns.</p>
-              </div>
-            )}
+            ))}
           </div>
+
+          {/* ================= AI LEARNING STATS ================= */}
+          {learningStats && (
+            <div className="card" style={{ marginTop: 24 }}>
+              <div className="section-title">🧠 AI Learning Progress</div>
+
+              <div className="grid-3">
+                {[
+                  { label: "Merchants Learned", value: learningStats.merchant_mappings_learned },
+                  { label: "Corrections Made", value: learningStats.total_corrections_made },
+                  { label: "Until Next Retrain", value: learningStats.model_will_improve_after },
+                ].map(item => (
+                  <div key={item.label}>
+                    <div>{item.value}</div>
+                    <div>{item.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <div>
+                  {learningStats.ready_to_retrain
+                    ? "✅ Ready to retrain!"
+                    : `${learningStats.total_corrections_made}/5 corrections`}
+                </div>
+
+                <div style={{ height: 8, background: "#1e2235" }}>
+                  <div style={{
+                    width: `${Math.min(100, (learningStats.total_corrections_made / 5) * 100)}%`,
+                    height: "100%",
+                    background: "#7c6af7"
+                  }} />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                💡 {learningStats.message}
+              </div>
+
+              {/* ✅ FIXED RETRAIN BUTTON */}
+              {learningStats.ready_to_retrain && (
+                <button
+                  className="btn btn-primary"
+                  style={{ marginBottom: 16 }}
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    const btn = e.target;
+                    btn.disabled = true;
+                    btn.textContent = "⏳ Retraining... please wait";
+
+                    try {
+                      const response = await fetch(
+                        "http://127.0.0.1:8000/api/feedback/retrain-model",
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({}),
+                        }
+                      );
+
+                      const data = await response.json();
+
+                      if (data.status === "success") {
+                        btn.textContent = "✅ Retrained Successfully!";
+                        btn.style.background = "#4ade80";
+                        btn.style.color = "#000";
+
+                        alert(
+                          "✅ Model retrained successfully!\n\n" +
+                          "The AI will now classify transactions better.\n\n" +
+                          "Tip: New SMS transactions will use the updated model."
+                        );
+                      } else {
+                        btn.textContent = "❌ Failed - Check Terminal";
+                        btn.style.background = "#f87171";
+
+                        alert(
+                          "❌ Retraining failed.\n\n" +
+                          "Error: " + (data.error || data.message || "Unknown") +
+                          "\n\nTry running manually:\npython scripts/train_model.py"
+                        );
+                      }
+                    } catch (err) {
+                      btn.textContent = "❌ Connection Error";
+                      btn.style.background = "#f87171";
+
+                      alert(
+                        "❌ Could not reach the backend.\n\n" +
+                        "Make sure backend is running on port 8000.\n" +
+                        "Error: " + err.message
+                      );
+                    } finally {
+                      setTimeout(() => {
+                        btn.disabled = false;
+                        btn.textContent = "🧠 Retrain AI with My Corrections";
+                        btn.style.background = "";
+                        btn.style.color = "";
+                      }, 3000);
+                    }
+                  }}
+                >
+                  🧠 Retrain AI with My Corrections
+                </button>
+              )}
+
+            </div>
+          )}
+
         </>
       )}
     </div>

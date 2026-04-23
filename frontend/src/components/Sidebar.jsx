@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   LayoutDashboard, List, MessageSquare,
   Users, TrendingUp, AlertCircle,
@@ -11,12 +12,30 @@ const NAV = [
   { path: "/sms",          icon: MessageSquare,   label: "Add via SMS" },
   { path: "/splits",       icon: Users,           label: "Split Tracker" },
   { path: "/insights",     icon: TrendingUp,      label: "Insights" },
-  { path: "/review",       icon: AlertCircle,     label: "Review Queue" },
+  { path: "/review",       icon: AlertCircle,     label: "Review Queue", badge: true },
 ];
 
 export default function Sidebar() {
-  const location = useLocation();
-  const navigate = useNavigate();
+  const location  = useLocation();
+  const navigate  = useNavigate();
+  const [reviewCount, setReviewCount] = useState(0);
+
+  useEffect(() => {
+    const uid = localStorage.getItem("finance_ai_user_id");
+    if (!uid) return;
+    axios.get(`http://127.0.0.1:8000/api/review/queue?user_id=${uid}`)
+      .then(r => setReviewCount(r.data.pending_count || 0))
+      .catch(() => {});
+
+    // Refresh every 30 seconds
+    const interval = setInterval(() => {
+      axios.get(`http://127.0.0.1:8000/api/review/queue?user_id=${uid}`)
+        .then(r => setReviewCount(r.data.pending_count || 0))
+        .catch(() => {});
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="sidebar">
@@ -24,28 +43,37 @@ export default function Sidebar() {
         <h1>💰 FinanceAI</h1>
         <p>Smart Money Tracker</p>
       </div>
+
       <nav className="sidebar-nav">
-        {NAV.map(({ path, icon: Icon, label }) => (
+        {NAV.map(({ path, icon: Icon, label, badge }) => (
           <div
             key={path}
             className={`nav-item ${location.pathname === path ? "active" : ""}`}
             onClick={() => navigate(path)}
+            style={{ justifyContent: "space-between" }}
           >
-            <Icon size={16} />
-            {label}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon size={16} />
+              {label}
+            </div>
+            {badge && reviewCount > 0 && (
+              <span style={{
+                background: "#f87171",
+                color: "#fff",
+                borderRadius: "10px",
+                padding: "1px 7px",
+                fontSize: 10,
+                fontWeight: 700,
+                minWidth: 18,
+                textAlign: "center",
+              }}>
+                {reviewCount}
+              </span>
+            )}
           </div>
         ))}
       </nav>
 
-      {/* Existing footer */}
-      <div style={{ padding: "16px 24px", borderTop: "1px solid #1e2235" }}>
-        <div style={{ fontSize: 11, color: "#4a5080" }}>FinanceAI v1.0</div>
-        <div style={{ fontSize: 11, color: "#3b4162", marginTop: 2 }}>
-          Backend: localhost:8000
-        </div>
-      </div>
-
-      {/* Added Logout Section */}
       <div style={{ padding: "16px 12px", borderTop: "1px solid #1e2235" }}>
         <div style={{ fontSize: 11, color: "#4a5080", marginBottom: 8 }}>
           FinanceAI v1.0 · localhost:8000

@@ -13,25 +13,42 @@ router = APIRouter()
 async def monthly_summary(user_id: int, year: int, month: int, db: AsyncSession = Depends(get_db)):
     from_date = datetime(year, month, 1)
     to_date = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
-    stmt = select(Transaction).where(Transaction.user_id == user_id,
-                                     Transaction.tx_date >= from_date, Transaction.tx_date < to_date)
+
+    stmt = select(Transaction).where(
+        Transaction.user_id == user_id,
+        Transaction.tx_date >= from_date,
+        Transaction.tx_date < to_date
+    )
+
     result = await db.execute(stmt)
     txs = result.scalars().all()
 
-    cat_spend: dict = defaultdict(float)
+    category_spend: dict = defaultdict(float)
     total_income = total_expense = total_refunds = 0.0
 
     for tx in txs:
-        if tx.is_refund or tx.is_wallet_load:
-            total_refunds += tx.amount; continue
-        if tx.is_income or tx.tx_type == TransactionType.CREDIT:
-            total_income += tx.amount
+        # Skip wallet loads completely
+        if tx.is_wallet_load:
+            continue
+
+        # Refunds & cashback handling
+        if tx.is_refund or tx.is_cashback:
+            total_refunds += tx.amount
+            continue
+
+        # Income logic
+        if tx.tx_type.value == "credit":
+            if not tx.is_refund and not tx.is_cashback:
+                total_income += tx.amount
+
+        # Expense logic
         else:
-            amt = tx.net_amount or tx.amount
-            cat_spend[tx.category or "Uncategorised"] += amt
+            amt = tx.net_amount if tx.net_amount and tx.net_amount > 0 else tx.amount
+            category_spend[tx.category or "Uncategorised"] += amt
             total_expense += amt
 
     savings = total_income - total_expense
+
     return {
         "period": f"{year}-{month:02d}",
         "total_income": round(total_income, 2),
@@ -39,11 +56,10 @@ async def monthly_summary(user_id: int, year: int, month: int, db: AsyncSession 
         "net_savings": round(savings, 2),
         "savings_rate_pct": round((savings / total_income * 100) if total_income else 0, 1),
         "category_breakdown": sorted(
-            [{"category": c, "amount": round(a, 2)} for c, a in cat_spend.items()],
+            [{"category": c, "amount": round(a, 2)} for c, a in category_spend.items()],
             key=lambda x: -x["amount"]
         ),
     }
-
 @router.get("/recurring")
 async def recurring_expenses(user_id: int, days: int = 90, db: AsyncSession = Depends(get_db)):
     since = datetime.utcnow() - timedelta(days=days)
