@@ -294,24 +294,60 @@ SEED_DATA = [
 
 
 async def load_user_corrections():
-    """Load user corrections from database as extra training data."""
+    """
+    Load user corrections from database as training data.
+
+    Strategy (two sources):
+    1. FeedbackLog + Transaction.raw_sms → train on the ACTUAL SMS the user corrected
+       This is the most powerful: the model learns the real SMS patterns.
+    2. MerchantMapping → train on merchant key words for fast lookup
+    """
     try:
         from app.utils.db import AsyncSessionLocal
-        from app.models.learning import MerchantMapping
+        from app.models.learning import FeedbackLog, MerchantMapping
+        from app.models.transaction import Transaction
         from sqlalchemy import select
 
         corrections = []
+        seen_tx_ids = set()
+
         async with AsyncSessionLocal() as db:
-            stmt = select(MerchantMapping)
+
+            # ── Source 1: FeedbackLog + actual raw SMS text ───────────────────────
+            stmt = select(FeedbackLog)
             result = await db.execute(stmt)
-            mappings = result.scalars().all()
+            logs = result.scalars().all()
+
+            for log in logs:
+                if not log.corrected_category:
+                    continue
+
+                tx = await db.get(Transaction, log.transaction_id)
+                if tx and tx.raw_sms and len(tx.raw_sms.strip()) > 10:
+                    # Use the actual SMS text as training input
+                    # Add it multiple times to give user corrections higher weight
+                    for _ in range(5):
+                        corrections.append((tx.raw_sms.lower().strip(), log.corrected_category))
+                    seen_tx_ids.add(log.transaction_id)
+
+            print("  Loaded " + str(len(seen_tx_ids)) + " corrected SMS texts from FeedbackLog")
+
+            # ── Source 2: MerchantMapping keys (for keyword-level matching) ───────
+            stmt2 = select(MerchantMapping)
+            result2 = await db.execute(stmt2)
+            mappings = result2.scalars().all()
+            mapping_count = 0
 
             for m in mappings:
                 if m.merchant_key and m.category:
-                    for _ in range(3):
-                        corrections.append((m.merchant_key, m.category))
+                    # Weight merchant key with usage_count (more corrections = more weight)
+                    weight = max(3, (m.usage_count or 1) * 2)
+                    for _ in range(weight):
+                        corrections.append((m.merchant_key.lower(), m.category))
+                    mapping_count += 1
 
-            print("  Loaded " + str(len(mappings)) + " merchant corrections from database")
+            print("  Loaded " + str(mapping_count) + " merchant key mappings from DB")
+            print("  Total user correction samples: " + str(len(corrections)))
 
         return corrections
 

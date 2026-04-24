@@ -143,104 +143,88 @@ export default function Insights() {
             <div className="card" style={{ marginTop: 24 }}>
               <div className="section-title">🧠 AI Learning Progress</div>
 
-              <div className="grid-3">
+              {/* Stats row */}
+              <div style={{ display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
                 {[
-                  { label: "Merchants Learned", value: learningStats.merchant_mappings_learned },
-                  { label: "Corrections Made", value: learningStats.total_corrections_made },
-                  { label: "Until Next Retrain", value: learningStats.model_will_improve_after },
+                  { label: "Merchants Learned", value: learningStats.merchant_mappings_learned, color: "#7c6af7", icon: "🏪" },
+                  { label: "Corrections Made", value: learningStats.total_corrections_made, color: "#4ade80", icon: "✏️" },
+                  { label: "Need to Retrain", value: learningStats.model_will_improve_after || 0, color: "#facc15", icon: "🎯" },
                 ].map(item => (
-                  <div key={item.label}>
-                    <div>{item.value}</div>
-                    <div>{item.label}</div>
+                  <div key={item.label} style={{
+                    flex: 1, minWidth: 120,
+                    background: "#0f1117", borderRadius: 10,
+                    padding: "12px 16px", textAlign: "center",
+                    border: "1px solid #1e2235",
+                  }}>
+                    <div style={{ fontSize: 20, marginBottom: 4 }}>{item.icon}</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: item.color }}>{item.value}</div>
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{item.label}</div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ marginTop: 12 }}>
-                <div>
-                  {learningStats.ready_to_retrain
-                    ? "✅ Ready to retrain!"
-                    : `${learningStats.total_corrections_made}/5 corrections`}
+              {/* Progress bar */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{
+                  display: "flex", justifyContent: "space-between",
+                  fontSize: 12, color: "#6b7280", marginBottom: 6,
+                }}>
+                  <span>
+                    {learningStats.ready_to_retrain
+                      ? "✅ Ready to retrain!"
+                      : `${learningStats.total_corrections_made}/5 corrections made`}
+                  </span>
+                  <span style={{ color: "#7c6af7", fontWeight: 600 }}>
+                    {Math.min(100, Math.round((learningStats.total_corrections_made / 5) * 100))}%
+                  </span>
                 </div>
-
-                <div style={{ height: 8, background: "#1e2235" }}>
+                <div style={{ height: 8, background: "#1e2235", borderRadius: 4, overflow: "hidden" }}>
                   <div style={{
                     width: `${Math.min(100, (learningStats.total_corrections_made / 5) * 100)}%`,
                     height: "100%",
-                    background: "#7c6af7"
+                    background: learningStats.ready_to_retrain
+                      ? "linear-gradient(90deg, #4ade80, #7c6af7)"
+                      : "linear-gradient(90deg, #7c6af7, #a78bfa)",
+                    borderRadius: 4,
+                    transition: "width 0.6s ease",
                   }} />
                 </div>
               </div>
 
-              <div style={{ marginTop: 12 }}>
+              {/* Top corrected categories */}
+              {learningStats.most_corrected_categories?.length > 0 && (
+                <div style={{
+                  background: "#0f1117", borderRadius: 8,
+                  padding: "12px 14px", marginBottom: 16,
+                  border: "1px solid #1e2235",
+                }}>
+                  <div style={{ fontSize: 11, color: "#4a5080", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                    Most Corrected Categories
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {learningStats.most_corrected_categories.map(([cat, count]) => (
+                      <span key={cat} style={{
+                        background: "#1a1d27", border: "1px solid #2d3354",
+                        borderRadius: 20, padding: "3px 10px",
+                        fontSize: 12, color: "#a78bfa",
+                      }}>
+                        {cat} <span style={{ color: "#6b7280" }}>×{count}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16 }}>
                 💡 {learningStats.message}
               </div>
 
-              {/* ✅ FIXED RETRAIN BUTTON */}
-              {learningStats.ready_to_retrain && (
-                <button
-                  className="btn btn-primary"
-                  style={{ marginBottom: 16 }}
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    const btn = e.target;
-                    btn.disabled = true;
-                    btn.textContent = "⏳ Retraining... please wait";
-
-                    try {
-                      const response = await fetch(
-                        "http://127.0.0.1:8000/api/feedback/retrain-model",
-                        {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({}),
-                        }
-                      );
-
-                      const data = await response.json();
-
-                      if (data.status === "success") {
-                        btn.textContent = "✅ Retrained Successfully!";
-                        btn.style.background = "#4ade80";
-                        btn.style.color = "#000";
-
-                        alert(
-                          "✅ Model retrained successfully!\n\n" +
-                          "The AI will now classify transactions better.\n\n" +
-                          "Tip: New SMS transactions will use the updated model."
-                        );
-                      } else {
-                        btn.textContent = "❌ Failed - Check Terminal";
-                        btn.style.background = "#f87171";
-
-                        alert(
-                          "❌ Retraining failed.\n\n" +
-                          "Error: " + (data.error || data.message || "Unknown") +
-                          "\n\nTry running manually:\npython scripts/train_model.py"
-                        );
-                      }
-                    } catch (err) {
-                      btn.textContent = "❌ Connection Error";
-                      btn.style.background = "#f87171";
-
-                      alert(
-                        "❌ Could not reach the backend.\n\n" +
-                        "Make sure backend is running on port 8000.\n" +
-                        "Error: " + err.message
-                      );
-                    } finally {
-                      setTimeout(() => {
-                        btn.disabled = false;
-                        btn.textContent = "🧠 Retrain AI with My Corrections";
-                        btn.style.background = "";
-                        btn.style.color = "";
-                      }, 3000);
-                    }
-                  }}
-                >
-                  🧠 Retrain AI with My Corrections
-                </button>
-              )}
+              {/* ── RETRAIN BUTTON — always visible, not gated ── */}
+              <RetrainButton
+                correctionCount={learningStats.total_corrections_made}
+                merchantCount={learningStats.merchant_mappings_learned}
+                onSuccess={load}
+              />
 
             </div>
           )}
@@ -250,3 +234,114 @@ export default function Insights() {
     </div>
   );
 }
+
+
+// ── Retrain Button Component ──────────────────────────────────────────────────
+function RetrainButton({ correctionCount, merchantCount, onSuccess }) {
+  const [status, setStatus] = React.useState("idle"); // idle | loading | success | error
+  const [message, setMessage] = React.useState("");
+
+  const handleRetrain = async () => {
+    setStatus("loading");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/feedback/retrain-model",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.status === "success") {
+        setStatus("success");
+        setMessage(
+          `Model retrained with ${correctionCount} correction${correctionCount !== 1 ? "s" : ""} ` +
+          `and ${merchantCount} merchant pattern${merchantCount !== 1 ? "s" : ""}. ` +
+          `New SMS transactions will now use the updated model.`
+        );
+        if (onSuccess) setTimeout(onSuccess, 1000);
+      } else {
+        setStatus("error");
+        setMessage(data.error || data.message || "Retraining failed. Check terminal.");
+      }
+    } catch (err) {
+      setStatus("error");
+      setMessage("Could not reach the backend. Make sure it is running on port 8000.");
+    }
+  };
+
+  const isLoading = status === "loading";
+
+  return (
+    <div>
+      <button
+        className="btn btn-primary"
+        style={{
+          width: "100%",
+          padding: "12px 20px",
+          fontSize: 14,
+          fontWeight: 600,
+          background: status === "success"
+            ? "linear-gradient(135deg, #4ade80, #22c55e)"
+            : status === "error"
+              ? "linear-gradient(135deg, #f87171, #ef4444)"
+              : "linear-gradient(135deg, #7c6af7, #a78bfa)",
+          color: status === "success" ? "#000" : "#fff",
+          opacity: isLoading ? 0.7 : 1,
+          cursor: isLoading ? "not-allowed" : "pointer",
+          transition: "all 0.3s ease",
+        }}
+        disabled={isLoading}
+        onClick={handleRetrain}
+      >
+        {isLoading
+          ? "⏳ Retraining AI... please wait"
+          : status === "success"
+            ? "✅ Retrained Successfully!"
+            : status === "error"
+              ? "❌ Failed — Click to Retry"
+              : `🧠 Retrain AI with My Corrections (${correctionCount} corrections, ${merchantCount} merchants)`}
+      </button>
+
+      {/* Info banner below button */}
+      {status === "idle" && correctionCount > 0 && (
+        <div style={{
+          marginTop: 10, padding: "10px 14px",
+          background: "#0f1117", borderRadius: 8,
+          border: "1px solid #1e2235", fontSize: 12, color: "#6b7280",
+        }}>
+          🔬 Clicking Retrain will teach the AI using your <strong style={{ color: "#a78bfa" }}>{correctionCount} past correction{correctionCount !== 1 ? "s" : ""}</strong> and <strong style={{ color: "#a78bfa" }}>{merchantCount} merchant pattern{merchantCount !== 1 ? "s" : ""}</strong>. Future transactions from the same merchants will be auto-categorised correctly.
+        </div>
+      )}
+
+      {status === "idle" && correctionCount === 0 && (
+        <div style={{
+          marginTop: 10, padding: "10px 14px",
+          background: "#0f1117", borderRadius: 8,
+          border: "1px solid #1e2235", fontSize: 12, color: "#6b7280",
+        }}>
+          💡 No corrections yet. Make corrections in <strong style={{ color: "#a78bfa" }}>Transaction History</strong> or <strong style={{ color: "#a78bfa" }}>Review Queue</strong> first, then retrain.
+        </div>
+      )}
+
+      {/* Result message */}
+      {(status === "success" || status === "error") && message && (
+        <div style={{
+          marginTop: 10, padding: "10px 14px",
+          background: status === "success" ? "#0a2e1a" : "#2e0a0a",
+          borderRadius: 8,
+          border: `1px solid ${status === "success" ? "#4ade80" : "#f87171"}`,
+          fontSize: 12,
+          color: status === "success" ? "#4ade80" : "#f87171",
+        }}>
+          {message}
+        </div>
+      )}
+    </div>
+  );
+}

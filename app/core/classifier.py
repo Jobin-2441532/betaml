@@ -89,6 +89,19 @@ class HybridClassifier:
                     explanation=f"Categorised based on your correction for '{full_vpa}'.",
                 )
 
+        # ── Layer 2.5: Scan raw SMS text for any stored merchant mapping keys ──
+        # This handles bank SMS like 'Rs.499 debited for NETFLIX subscription'
+        # where no merchant/VPA is parsed but we have a stored 'netflix' key
+        if self.merchant_mappings and parsed.raw_text:
+            sms_lower = parsed.raw_text.lower()
+            for key, (cat, sub) in self.merchant_mappings.items():
+                # Only match meaningful keys (>=3 chars), not generic words
+                if len(key) >= 3 and key in sms_lower:
+                    return ClassificationResult(
+                        category=cat, sub_category=sub, confidence=0.99,
+                        explanation=f"Categorised based on your correction ('{key}' found in SMS).",
+                    )
+
         # ── Layer 3: VPA pattern matching ─────────────────────────────────────
         if parsed.vpa:
             vpa_cat = get_category_from_vpa(parsed.vpa)
@@ -253,6 +266,12 @@ class HybridClassifier:
         try:
             import joblib
             path = settings.model_path
+            # ✅ FIX: Resolve relative paths from project root, not CWD
+            if not os.path.isabs(path):
+                project_root = os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+                path = os.path.join(project_root, path)
             if not os.path.exists(path):
                 return None
             mtime = os.path.getmtime(path)

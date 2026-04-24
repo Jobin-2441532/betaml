@@ -9,6 +9,7 @@ from app.models.transaction import Transaction, ReviewStatus
 from app.utils.db import get_db
 from config.settings import settings
 
+
 router = APIRouter()
 
 
@@ -51,62 +52,34 @@ async def approve_review(
 ):
     """
     User confirms/corrects a transaction from review queue.
-    This counts as a learning correction — saves merchant mapping.
+    Delegates to LearningService so the same rich learning logic is used
+    as when correcting from the Transaction History page.
     """
+    from app.services.learning_service import LearningService
+
     tx = await db.get(Transaction, req.transaction_id)
     if not tx or tx.user_id != req.user_id:
         return {"error": "Transaction not found"}
 
-    original_category = tx.category or "Uncategorised"
+    sub_category = req.sub_category or "General"
 
-    # Update transaction
-    tx.category = req.category
-    tx.sub_category = req.sub_category
-    tx.review_status = ReviewStatus.REVIEWED
-    tx.confidence = 0.99
-
-    # ── Count this as a learning correction ──────────────────────────────────
-    from app.models.learning import FeedbackLog, MerchantMapping
-    from datetime import datetime
-
-    # Log the feedback
-    log = FeedbackLog(
+    # ── Delegate to LearningService for rich merchant-key extraction ──────────
+    # This saves: merchant name, VPA prefix, AND raw SMS keywords (Netflix etc.)
+    learning = LearningService(db)
+    await learning.record_correction(
         user_id=req.user_id,
         transaction_id=req.transaction_id,
-        original_category=original_category,
         corrected_category=req.category,
-        original_confidence=tx.confidence or 0.0,
-        created_at=datetime.utcnow(),
+        corrected_sub_category=sub_category,
     )
-    db.add(log)
 
-    # Save merchant mapping so AI learns
-    if tx.merchant:
-        key = tx.merchant.lower().strip()
-        stmt = select(MerchantMapping).where(
-            MerchantMapping.user_id == req.user_id,
-            MerchantMapping.merchant_key == key,
-        )
-        result = await db.execute(stmt)
-        existing = result.scalar_one_or_none()
+    # mark as reviewed (record_correction already sets confidence=0.99 & commits)
+    tx = await db.get(Transaction, req.transaction_id)
+    if tx:
+        tx.review_status = ReviewStatus.REVIEWED
+        await db.commit()
 
-        if existing:
-            existing.category = req.category
-            existing.sub_category = req.sub_category
-            existing.usage_count += 1
-            existing.updated_at = datetime.utcnow()
-        else:
-            db.add(MerchantMapping(
-                user_id=req.user_id,
-                merchant_key=key,
-                category=req.category,
-                sub_category=req.sub_category,
-                confidence_override=0.99,
-                usage_count=1,
-            ))
-
-    await db.flush()
-    return {"status": "reviewed", "transaction": tx.to_output_dict()}
+    return {"status": "reviewed", "transaction": tx.to_output_dict() if tx else {}}
 
 
 @router.post("/auto-assign-expired")

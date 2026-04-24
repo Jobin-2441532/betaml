@@ -1,11 +1,15 @@
 from __future__ import annotations
 from datetime import datetime
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.utils.db import Base
 
 class MerchantMapping(Base):
     __tablename__ = "merchant_mappings"
+    __table_args__ = (
+        # ✅ FIX: Prevent duplicate (user_id, merchant_key) pairs
+        UniqueConstraint("user_id", "merchant_key", name="uq_user_merchant"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)
     merchant_key: Mapped[str] = mapped_column(String(256), index=True)

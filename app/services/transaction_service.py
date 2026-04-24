@@ -40,6 +40,15 @@ class TransactionService:
 
         is_known_merchant = bool(
             parsed.merchant and parsed.merchant.lower().strip() in merchant_mappings
+        ) or bool(
+            # Also check VPA prefix
+            parsed.vpa and parsed.vpa.split("@")[0].lower().strip() in merchant_mappings
+        ) or bool(
+            # Also check raw SMS text for stored keys (handles bank SMS like Netflix)
+            merchant_mappings and parsed.raw_text and any(
+                len(k) >= 3 and k in parsed.raw_text.lower()
+                for k in merchant_mappings
+            )
         )
 
         score = self._confidence_engine.score(
