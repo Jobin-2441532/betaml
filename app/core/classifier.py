@@ -54,13 +54,15 @@ class HybridClassifier:
         text = self._feature_text(parsed)
         upper = text.upper()
         raw_upper = (parsed.raw_text or "").upper()
+        
+        from app.utils.patterns import LAYER_1_STRICT, LAYER_2_HIGH, LAYER_3_KEYWORDS, is_mixed_basket_merchant
 
-        # ── Layer 1: Hard rules ───────────────────────────────────────────────
+        # ── Layer 0: Hard rules ───────────────────────────────────────────────
         hard = self._hard_rules(text, upper, raw_upper, parsed)
         if hard:
             return hard
 
-        # ── Layer 2: User merchant mappings ──────────────────────────────────
+        # ── Layer 1: User merchant mappings (Explicit Overrides) ─────────────
         # Check merchant name
         if parsed.merchant:
             key = parsed.merchant.lower().strip()
@@ -80,7 +82,6 @@ class HybridClassifier:
                     category=cat, sub_category=sub, confidence=0.99,
                     explanation=f"Categorised based on your correction for '{vpa_prefix}'.",
                 )
-            # Also check full VPA
             full_vpa = parsed.vpa.lower().strip()
             if full_vpa in self.merchant_mappings:
                 cat, sub = self.merchant_mappings[full_vpa]
@@ -89,47 +90,72 @@ class HybridClassifier:
                     explanation=f"Categorised based on your correction for '{full_vpa}'.",
                 )
 
-        # ── Layer 2.5: Scan raw SMS text for any stored merchant mapping keys ──
-        # This handles bank SMS like 'Rs.499 debited for NETFLIX subscription'
-        # where no merchant/VPA is parsed but we have a stored 'netflix' key
         if self.merchant_mappings and parsed.raw_text:
             sms_lower = parsed.raw_text.lower()
             for key, (cat, sub) in self.merchant_mappings.items():
-                # Only match meaningful keys (>=3 chars), not generic words
                 if len(key) >= 3 and key in sms_lower:
                     return ClassificationResult(
                         category=cat, sub_category=sub, confidence=0.99,
                         explanation=f"Categorised based on your correction ('{key}' found in SMS).",
                     )
 
-        # ── Layer 3: VPA pattern matching ─────────────────────────────────────
+        # Build feature text list to check layers
+        search_terms = []
+        if parsed.merchant: search_terms.append(parsed.merchant.lower().strip())
+        if parsed.vpa:
+            search_terms.append(parsed.vpa.split("@")[0].lower().strip())
+
+        # ── Layer 2: Strict Whitelist (Near 100% Confidence) ─────────────────
+        for term in search_terms:
+            if term in LAYER_1_STRICT:
+                cat, sub = LAYER_1_STRICT[term]
+                return ClassificationResult(
+                    category=cat, sub_category=sub, confidence=0.99,
+                    explanation=f"Strict brand match for '{term}'.",
+                )
+
+        # ── Layer 3: High Confidence / Broad Category ────────────────────────
+        for term in search_terms:
+            if term in LAYER_2_HIGH:
+                cat, sub = LAYER_2_HIGH[term]
+                # If mixed basket and amount > 800, lower confidence to force review
+                amount = parsed.amount or 0
+                is_mixed = is_mixed_basket_merchant(term, amount)
+                conf = 0.60 if (is_mixed and amount > 800) else 0.85
+                explanation = (
+                    f"Mixed basket purchase > ₹800 needs review." if conf == 0.60 
+                    else f"Broad category match for '{term}'."
+                )
+                return ClassificationResult(
+                    category=cat, sub_category=sub, confidence=conf,
+                    explanation=explanation,
+                )
+
+        # ── Layer 4: Smart Keyword Engine (Local Merchants) ──────────────────
+        text_lower = text.lower()
+        for kw, (cat, sub) in LAYER_3_KEYWORDS.items():
+            if kw in text_lower:
+                return ClassificationResult(
+                    category=cat, sub_category=sub, confidence=0.60,
+                    explanation=f"Local merchant keyword match for '{kw}'.",
+                )
+
+        # ── Layer 4.5: VPA pattern & old keywords (Fallback) ─────────────────
         if parsed.vpa:
             vpa_cat = get_category_from_vpa(parsed.vpa)
             if vpa_cat:
                 _, sub, _ = get_category_from_keywords(parsed.vpa.split("@")[0])
                 return ClassificationResult(
-                    category=vpa_cat, sub_category=sub or "General", confidence=0.90,
+                    category=vpa_cat, sub_category=sub or "General", confidence=0.75,
                     explanation=f"Categorised as {vpa_cat} via UPI ID '{parsed.vpa}'.",
                 )
 
-        # ── Layer 4: Keyword matching on full text ────────────────────────────
-        # Try merchant name first
-        if parsed.merchant:
-            kw_cat, kw_sub, kw_conf = get_category_from_keywords(parsed.merchant)
-            if kw_cat and kw_conf >= 0.60:
-                return ClassificationResult(
-                    category=kw_cat, sub_category=kw_sub or "General",
-                    confidence=kw_conf,
-                    explanation=f"Categorised as {kw_cat} from merchant name '{parsed.merchant}'.",
-                )
-
-        # Try full SMS text
         kw_cat, kw_sub, kw_conf = get_category_from_keywords(text)
         if kw_cat and kw_conf >= 0.60:
             return ClassificationResult(
                 category=kw_cat, sub_category=kw_sub or "General",
-                confidence=kw_conf,
-                explanation=f"Categorised as {kw_cat} via keyword match.",
+                confidence=0.60, # max out at 0.60 to force review or suggestion
+                explanation=f"Categorised as {kw_cat} via general keyword match.",
             )
 
         # ── Layer 5: ML model ─────────────────────────────────────────────────
@@ -158,7 +184,7 @@ class HybridClassifier:
         if match_keyword(upper, ATM_KEYWORDS) or parsed.payment_method == "ATM":
             return ClassificationResult(
                 category="Cash Withdrawal", sub_category="ATM",
-                confidence=0.97, explanation="ATM cash withdrawal detected.",
+                confidence=0.60, explanation="ATM cash withdrawal needs review.",
                 is_atm=True,
             )
 

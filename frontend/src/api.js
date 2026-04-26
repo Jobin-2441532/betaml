@@ -45,8 +45,8 @@ export const getPaymentMethodBreakdown = (days = 30) =>
   });
 
 // ── Feedback ─────────────────────────────────────────────────────
-export const correctCategory = (transaction_id, category, sub_category) =>
-  api.post("/api/feedback/correct", { user_id: getUserId(), transaction_id, category, sub_category });
+export const correctCategory = (transaction_id, category, sub_category, is_reimbursement = false) =>
+  api.post("/api/feedback/correct", { user_id: getUserId(), transaction_id, category, sub_category, is_reimbursement });
 
 // ── Splits ───────────────────────────────────────────────────────
 export const detectSplits = (days = 30) =>
@@ -72,5 +72,5 @@ export const getCashbackSavings = (days = 30) =>
 export const getReviewQueue = () =>
   api.get("/api/review/queue", { params: { user_id: getUserId() } });
 
-export const approveReview = (transaction_id, category, sub_category) =>
-  api.post("/api/review/approve", { user_id: getUserId(), transaction_id, category, sub_category });
+export const approveReview = (transaction_id, category, sub_category, is_reimbursement = false) =>
+  api.post("/api/review/approve", { user_id: getUserId(), transaction_id, category, sub_category, is_reimbursement });

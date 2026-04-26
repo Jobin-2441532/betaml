@@ -30,3 +30,14 @@ class FeedbackLog(Base):
     corrected_category: Mapped[str] = mapped_column(String(64))
     original_confidence: Mapped[float] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+class UserSalaryProfile(Base):
+    __tablename__ = "user_salary_profiles"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True, unique=True)
+    expected_amount_min: Mapped[float] = mapped_column(Float)
+    expected_amount_max: Mapped[float] = mapped_column(Float)
+    employer_vpa: Mapped[str] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

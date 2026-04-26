@@ -16,6 +16,7 @@ export default function Transactions({ showToast }) {
   const [filter, setFilter] = useState({ category: "", tx_type: "" });
   const [editTx, setEditTx] = useState(null);
   const [newCat, setNewCat] = useState("");
+  const [isReimbursement, setIsReimbursement] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -33,7 +34,7 @@ export default function Transactions({ showToast }) {
   const handleCorrect = async () => {
     if (!newCat) return;
     try {
-      await correctCategory(editTx.id, newCat, "General");
+      await correctCategory(editTx.id, newCat, "General", isReimbursement);
       showToast(`Category updated to "${newCat}"`);
       setEditTx(null);
       load();
@@ -134,11 +135,17 @@ export default function Transactions({ showToast }) {
                       <span className={tx.type === "credit" ? "credit-amount" : "debit-amount"}>
                         {tx.type === "credit" ? "+" : "−"}₹{(tx.amount || 0).toLocaleString("en-IN")}
                       </span>
+                      {tx.has_refund_applied && (
+                        <div style={{ fontSize: 10, color: "#10b981", marginTop: 4, fontWeight: 500, display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                          <span>↩️ Refund Applied</span>
+                          <span style={{ color: "#9ca3af", fontWeight: 400 }}>Net: ₹{(tx.net_amount || 0).toLocaleString("en-IN")}</span>
+                        </div>
+                      )}
                     </td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button className="btn btn-secondary btn-sm"
-                          onClick={() => { setEditTx(tx); setNewCat(tx.category); }}>
+                          onClick={() => { setEditTx(tx); setNewCat(tx.category); setIsReimbursement(tx.tags?.includes("reimbursement") || false); }}>
                           <Edit2 size={12} />
                         </button>
                         <button className="btn btn-danger btn-sm"
@@ -172,6 +179,19 @@ export default function Transactions({ showToast }) {
                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
+            {editTx.type === "credit" && (
+              <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  id="modal-reimb"
+                  checked={isReimbursement}
+                  onChange={(e) => setIsReimbursement(e.target.checked)}
+                />
+                <label htmlFor="modal-reimb" style={{ fontSize: 13, color: "#9ca3af", margin: 0, cursor: "pointer" }}>
+                  Reimbursement for earlier spending
+                </label>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-primary" onClick={handleCorrect}>
                 Save & Learn

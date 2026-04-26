@@ -143,8 +143,11 @@ class LearningService:
 
             # 2️⃣ Extract merchant key
             merchant_key = _extract_merchant_key(tx)
+            
+            from app.utils.patterns import is_p2p_vpa
+            is_p2p = bool(tx.vpa and is_p2p_vpa(tx.vpa)) or bool(tx.tags and "p2p" in tx.tags.split(","))
 
-            if merchant_key:
+            if merchant_key and not is_p2p:
                 await self._upsert_mapping(
                     user_id,
                     merchant_key,
@@ -167,7 +170,7 @@ class LearningService:
                             corrected_category,
                             corrected_sub_category,
                         )
-            else:
+            elif not is_p2p:
                 # No merchant key from name/vpa — store raw SMS keyword as key
                 # This handles bank SMS like NETFLIX, SPOTIFY etc.
                 sms_key = _extract_keyword_from_sms(tx.raw_sms)

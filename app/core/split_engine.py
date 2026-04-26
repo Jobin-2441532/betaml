@@ -39,11 +39,12 @@ class SplitEngine:
 
         for debit in debits:
             window_end = debit.tx_date + timedelta(days=self.window_days)
+            window_start = debit.tx_date - timedelta(days=7)
             candidates = [
                 t for t in transactions
                 if t.tx_type == "credit"
                 and t.id not in processed
-                and debit.tx_date <= t.tx_date <= window_end
+                and window_start <= t.tx_date <= window_end
                 and t.amount < debit.amount
                 and t.amount >= settings.split_min_amount
             ]

@@ -10,7 +10,6 @@ const NAV = [
   { path: "/",             icon: LayoutDashboard, label: "Dashboard" },
   { path: "/transactions", icon: List,            label: "Transactions" },
   { path: "/sms",          icon: MessageSquare,   label: "Add via SMS" },
-  { path: "/splits",       icon: Users,           label: "Split Tracker" },
   { path: "/insights",     icon: TrendingUp,      label: "Insights" },
   { path: "/review",       icon: AlertCircle,     label: "Review Queue", badge: true },
 ];

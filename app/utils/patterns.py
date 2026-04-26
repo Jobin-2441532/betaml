@@ -592,3 +592,179 @@ def is_cashback_transaction(text: str, vpa: str = None) -> bool:
 
 def is_deposit_transaction(text: str) -> bool:
     return match_keyword(text, DEPOSIT_KEYWORDS)
+
+# ── LAYERED CATEGORIZATION PIPELINE ──────────────────────────────────────────
+
+LAYER_1_STRICT = {
+    # Groceries / Essentials
+    "blinkit": ("Groceries", "Supermarket"),
+    "zepto": ("Groceries", "Supermarket"),
+    "bigbasket": ("Groceries", "Supermarket"),
+    "dmart": ("Groceries", "Supermarket"),
+    "dmart ready": ("Groceries", "Supermarket"),
+    "reliance smart": ("Groceries", "Supermarket"),
+    "smart bazaar": ("Groceries", "Supermarket"),
+    "spencer's": ("Groceries", "Supermarket"),
+    "spencers": ("Groceries", "Supermarket"),
+    "more supermarket": ("Groceries", "Supermarket"),
+
+    # Food Delivery / QSR
+    "swiggy": ("Food & Dining", "Food Delivery"),
+    "zomato": ("Food & Dining", "Food Delivery"),
+    "domino's": ("Food & Dining", "Restaurant"),
+    "dominos": ("Food & Dining", "Restaurant"),
+    "mcdonald's": ("Food & Dining", "Restaurant"),
+    "mcdonalds": ("Food & Dining", "Restaurant"),
+    "kfc": ("Food & Dining", "Restaurant"),
+    "pizza hut": ("Food & Dining", "Restaurant"),
+    "burger king": ("Food & Dining", "Restaurant"),
+    "subway": ("Food & Dining", "Restaurant"),
+    "starbucks": ("Food & Dining", "Tea/Coffee"),
+
+    # Transport / Mobility
+    "uber": ("Transport", "Cab"),
+    "ola": ("Transport", "Cab"),
+    "rapido": ("Transport", "Cab"),
+
+    # Fuel
+    "indian oil": ("Fuel", "Petrol/Diesel"),
+    "iocl": ("Fuel", "Petrol/Diesel"),
+    "hpcl": ("Fuel", "Petrol/Diesel"),
+    "bpcl": ("Fuel", "Petrol/Diesel"),
+    "shell": ("Fuel", "Petrol/Diesel"),
+
+    # Pharmacy / Health
+    "apollo pharmacy": ("Health", "Pharmacy"),
+    "1mg": ("Health", "Pharmacy"),
+    "pharmeasy": ("Health", "Pharmacy"),
+    "netmeds": ("Health", "Pharmacy"),
+
+    # Entertainment / Tickets
+    "bookmyshow": ("Entertainment", "Cinema"),
+    "pvr cinemas": ("Entertainment", "Cinema"),
+    "pvr": ("Entertainment", "Cinema"),
+    "inox": ("Entertainment", "Cinema"),
+
+    # Streaming / Subscriptions
+    "netflix": ("Entertainment", "OTT"),
+    "amazon prime": ("Entertainment", "OTT"),
+    "prime video": ("Entertainment", "OTT"),
+    "hotstar": ("Entertainment", "OTT"),
+    "sonyliv": ("Entertainment", "OTT"),
+    "sony liv": ("Entertainment", "OTT"),
+    "zee5": ("Entertainment", "OTT"),
+    "spotify": ("Entertainment", "Music"),
+    "youtube premium": ("Entertainment", "OTT"),
+
+    # Travel Booking
+    "irctc": ("Travel", "Train"),
+    "redbus": ("Travel", "Bus"),
+    "makemytrip": ("Travel", "Flights"),
+    "goibibo": ("Travel", "Flights"),
+    "yatra": ("Travel", "Flights"),
+
+    # Telecom / Broadband
+    "airtel": ("Telecom", "Mobile Recharge"),
+    "jio": ("Telecom", "Mobile Recharge"),
+    "vodafone idea": ("Telecom", "Mobile Recharge"),
+    "vi": ("Telecom", "Mobile Recharge"),
+    "bsnl": ("Telecom", "Mobile Recharge"),
+    "act fibernet": ("Utilities", "Internet"),
+    "hathway": ("Utilities", "Internet"),
+    "tata play": ("Entertainment", "DTH"),
+
+    # Utilities
+    "bescom": ("Utilities", "Electricity"),
+    "msedcl": ("Utilities", "Electricity"),
+    "bses": ("Utilities", "Electricity"),
+    "tneb": ("Utilities", "Electricity"),
+    "cesc": ("Utilities", "Electricity"),
+    "adani electricity": ("Utilities", "Electricity"),
+    "mgl": ("Utilities", "Gas"),
+    "igl": ("Utilities", "Gas"),
+    "adani gas": ("Utilities", "Gas"),
+
+    # Financial / EMI / Investments
+    "bajaj finance": ("Loan EMI", "Personal Loan"),
+    "hdfc loan emi": ("Loan EMI", "Home Loan"),
+    "sbi card payment": ("Credit Card", "Payment"),
+    "icici credit card": ("Credit Card", "Payment"),
+    "zerodha": ("Investment", "Stocks"),
+    "groww": ("Investment", "Stocks"),
+    "upstox": ("Investment", "Stocks"),
+}
+
+LAYER_2_HIGH = {
+    # Fashion / Lifestyle
+    "reliance trends": ("Shopping", "Clothing"),
+    "westside": ("Shopping", "Clothing"),
+    "zudio": ("Shopping", "Clothing"),
+    "pantaloons": ("Shopping", "Clothing"),
+    "myntra": ("Shopping", "E-commerce"),
+    "ajio": ("Shopping", "E-commerce"),
+
+    # Electronics Stores
+    "croma": ("Shopping", "Electronics"),
+    "reliance digital": ("Shopping", "Electronics"),
+    "vijay sales": ("Shopping", "Electronics"),
+
+    # E-commerce (Mixed Basket flag applied separately)
+    "amazon": ("Shopping", "E-commerce"),
+    "flipkart": ("Shopping", "E-commerce"),
+    "meesho": ("Shopping", "E-commerce"),
+    "jiomart": ("Shopping", "E-commerce"),
+    "tata cliq": ("Shopping", "E-commerce"),
+    "tatacliq": ("Shopping", "E-commerce"),
+}
+
+LAYER_3_KEYWORDS = {
+    # Groceries
+    "store": ("Groceries", "Local Store"),
+    "mart": ("Groceries", "Local Store"),
+    "provision": ("Groceries", "Local Store"),
+    "general": ("Groceries", "Local Store"),
+
+    # Food
+    "hotel": ("Food & Dining", "Restaurant"),
+    "restaurant": ("Food & Dining", "Restaurant"),
+    "dhaba": ("Food & Dining", "Restaurant"),
+    "kitchen": ("Food & Dining", "Restaurant"),
+    "biryani": ("Food & Dining", "Restaurant"),
+
+    # Medical
+    "medical": ("Health", "Pharmacy"),
+    "pharma": ("Health", "Pharmacy"),
+    "clinic": ("Health", "Hospital/Clinic"),
+    "hospital": ("Health", "Hospital/Clinic"),
+
+    # Personal Care
+    "salon": ("Personal Care", "Salon/Spa"),
+    "beauty": ("Personal Care", "Salon/Spa"),
+    "spa": ("Personal Care", "Salon/Spa"),
+    "hair": ("Personal Care", "Salon/Spa"),
+
+    # Services
+    "repair": ("Services", "Professional"),
+    "service": ("Services", "Professional"),
+    "works": ("Services", "Professional"),
+    "tailor": ("Services", "Professional"),
+}
+
+def is_mixed_basket_merchant(merchant_name: str, amount: float = 0.0) -> bool:
+    """
+    Returns True if the merchant is a known mixed-basket merchant 
+    (like Amazon, Flipkart, Myntra, JioMart) where a single transaction 
+    could contain items from multiple categories.
+    """
+    if not merchant_name:
+        return False
+    
+    name_lower = merchant_name.lower().strip()
+    mixed_merchants = {"amazon", "flipkart", "meesho", "jiomart", "tata cliq", "tatacliq"}
+    
+    # Optional: We can check if it matches exactly or is contained
+    for m in mixed_merchants:
+        if m in name_lower:
+            return True
+            
+    return False

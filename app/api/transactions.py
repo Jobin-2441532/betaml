@@ -63,7 +63,6 @@ async def payment_method_breakdown(
     stmt = select(Transaction).where(
         Transaction.user_id == user_id,
         Transaction.tx_date >= since,
-        Transaction.tx_type == TransactionType.DEBIT,
     )
     result = await db.execute(stmt)
     txs = result.scalars().all()
@@ -71,7 +70,10 @@ async def payment_method_breakdown(
     breakdown: dict = defaultdict(float)
     for tx in txs:
         method = tx.payment_method or "UNKNOWN"
-        breakdown[method] += tx.net_amount or tx.amount
+        if tx.tx_type == TransactionType.DEBIT:
+            breakdown[method] += tx.net_amount or tx.amount
+        elif tx.tx_type == TransactionType.CREDIT and "reimbursement" in (tx.tags or ""):
+            breakdown[method] -= tx.amount
 
     return {
         "period_days": days,
@@ -105,6 +107,30 @@ async def delete_transaction(
     tx = await db.get(Transaction, transaction_id)
     if not tx or tx.user_id != user_id:
         raise HTTPException(status_code=404, detail="Not found")
+    
+    if tx.is_refund or tx.is_cashback:
+        orig = None
+        if tx.original_tx_id:
+            orig = await db.get(Transaction, tx.original_tx_id)
+        else:
+            # Fallback lookback (for transactions created before we saved original_tx_id)
+            lookback = tx.tx_date - timedelta(days=30)
+            stmt = select(Transaction).where(
+                Transaction.user_id == user_id,
+                Transaction.merchant == tx.merchant,
+                Transaction.tx_type == TransactionType.DEBIT,
+                Transaction.tx_date >= lookback,
+                Transaction.tx_date <= tx.tx_date,
+                Transaction.amount >= tx.amount,
+                tx.amount >= 0.8 * Transaction.amount
+            ).order_by(Transaction.tx_date.desc()).limit(1)
+            res = await db.execute(stmt)
+            orig = res.scalar_one_or_none()
+            
+        if orig:
+            # Add back the refund to the net_amount
+            orig.net_amount = min(orig.amount, (orig.net_amount or orig.amount) + tx.amount)
+
     await db.delete(tx)
     return {"deleted": True, "id": transaction_id}
 

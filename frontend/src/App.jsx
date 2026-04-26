@@ -7,7 +7,6 @@ import TopBar from "./components/TopBar";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import SMSInput from "./pages/SMSInput";
-import Splits from "./pages/Splits";
 import Insights from "./pages/Insights";
 import ReviewQueue from "./pages/ReviewQueue";
 import Onboarding from "./pages/Onboarding";
@@ -19,7 +18,6 @@ const PAGES = {
   "/": { title: "Dashboard", sub: "Overview of your finances" },
   "/transactions": { title: "Transactions", sub: "All your transactions" },
   "/sms": { title: "Add via SMS", sub: "Paste SMS to classify" },
-  "/splits": { title: "Split Tracker", sub: "Group expenses & reimbursements" },
   "/insights": { title: "Monthly Insights", sub: "Spending patterns & trends" },
   "/review": { title: "Review Queue", sub: "Transactions needing attention" },
 };
@@ -117,7 +115,6 @@ function RouteContent({ path, showToast, triggerP2PPopup, triggerSubPopup }) {
   if (path === "/") return <Dashboard {...props} />;
   if (path === "/transactions") return <Transactions {...props} />;
   if (path === "/sms") return <SMSInput {...props} />;
-  if (path === "/splits") return <Splits {...props} />;
   if (path === "/insights") return <Insights {...props} />;
   if (path === "/review") return <ReviewQueue {...props} />;
 

@@ -31,14 +31,20 @@ async def monthly_summary(user_id: int, year: int, month: int, db: AsyncSession 
         if tx.is_wallet_load:
             continue
 
+        is_reimb = "reimbursement" in (tx.tags or "")
+
         # Refunds & cashback handling
-        if tx.is_refund or tx.is_cashback:
+        if (tx.is_refund or tx.is_cashback) and not is_reimb:
             total_refunds += tx.amount
             continue
 
         # Income logic
         if tx.tx_type.value == "credit":
-            if not tx.is_refund and not tx.is_cashback:
+            if is_reimb:
+                amt = tx.amount
+                category_spend[tx.category or "Uncategorised"] -= amt
+                total_expense -= amt
+            elif not tx.is_refund and not tx.is_cashback:
                 total_income += tx.amount
 
         # Expense logic
@@ -84,14 +90,16 @@ async def recurring_expenses(user_id: int, days: int = 90, db: AsyncSession = De
 async def top_merchants(user_id: int, days: int = 30, top_n: int = 10, db: AsyncSession = Depends(get_db)):
     since = datetime.utcnow() - timedelta(days=days)
     stmt = select(Transaction).where(Transaction.user_id == user_id,
-                                     Transaction.tx_date >= since,
-                                     Transaction.tx_type == TransactionType.DEBIT)
+                                     Transaction.tx_date >= since)
     result = await db.execute(stmt)
     txs = result.scalars().all()
     spend: dict = defaultdict(float)
     for tx in txs:
         if tx.merchant:
-            spend[tx.merchant] += tx.net_amount or tx.amount
+            if tx.tx_type == TransactionType.DEBIT:
+                spend[tx.merchant] += tx.net_amount or tx.amount
+            elif tx.tx_type == TransactionType.CREDIT and "reimbursement" in (tx.tags or ""):
+                spend[tx.merchant] -= tx.amount
     top = sorted(spend.items(), key=lambda x: -x[1])[:top_n]
     return {"top_merchants": [{"merchant": m, "total_spend": round(s, 2)} for m, s in top]}
 

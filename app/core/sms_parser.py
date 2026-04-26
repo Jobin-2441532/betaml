@@ -161,6 +161,8 @@ class SMSParser:
             r"(?:Narration:|Info:|Remarks:)\s*([A-Z0-9_\s]{3,25})",
             r"from\s+([A-Z][a-zA-Z\s]{2,20})",
             r"paid to\s+([A-Z][A-Z0-9\s&.\-]{2,30}?)(?:\s+(?:via|on|\.))",
+            r"([A-Z]+)\s+ORDER CANCELLED",
+            r"REFUND\s+FROM\s+([A-Z][a-zA-Z\s]{2,20})",
         ]
 
         for pattern in patterns:
@@ -174,6 +176,15 @@ class SMSParser:
 
                 if raw not in skip and len(raw) > 2:
                     result.merchant = raw[:40].title()
+                    return
+
+        # Fallback to known high-confidence merchants
+        from app.utils.patterns import LAYER_1_STRICT, LAYER_2_HIGH
+        text_lower = text.lower()
+        for m_key in list(LAYER_1_STRICT.keys()) + list(LAYER_2_HIGH.keys()):
+            if len(m_key) > 3 and m_key in text_lower:
+                if re.search(rf"\b{re.escape(m_key)}\b", text_lower):
+                    result.merchant = m_key.title()
                     return
 
     @staticmethod

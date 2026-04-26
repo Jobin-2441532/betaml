@@ -22,6 +22,7 @@ class CorrectionRequest(BaseModel):
     transaction_id: int
     category: str
     sub_category: str = "General"
+    is_reimbursement: bool = False
 
 
 @router.post("/correct")
@@ -33,7 +34,7 @@ async def correct_category(
 
     service = TransactionService(db=db, user_id=req.user_id)
     result = await service.correct_category(
-        req.transaction_id, req.category, req.sub_category
+        req.transaction_id, req.category, req.sub_category, req.is_reimbursement
     )
     return {"status": "updated", "transaction": result}
 
